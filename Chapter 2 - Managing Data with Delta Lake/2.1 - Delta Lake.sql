@@ -1,10 +1,15 @@
 -- Databricks notebook source
+-- DBTITLE 1,Use catalog
 -- MAGIC %md
 -- MAGIC # Working with Delta Lake Tables
 
 -- COMMAND ----------
 
-USE CATALOG hive_metastore
+-- DBTITLE 1,Use catalog
+-- The book uses the legacy hive_metastore catalog, which doesn't exist in
+-- Unity Catalog-only workspaces (e.g. Databricks Free Edition).
+-- See MODERNIZATION_NOTES.md in the repo root.
+USE CATALOG main
 
 -- COMMAND ----------
 
