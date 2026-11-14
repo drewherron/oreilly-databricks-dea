@@ -36,7 +36,7 @@
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
-| Chapter 3: 3.1, 3.2A, 3.2B | `hive_metastore` references — may be pedagogical (teaching legacy vs UC); fix in context when reached | 3.1 **Fixed 2026-11-14**; 3.2A/3.2B not yet reached |
+| Chapter 3: 3.1, 3.2A, 3.2B | `hive_metastore` references — may be pedagogical (teaching legacy vs UC); fix in context when reached | 3.1 & 3.2A **Fixed 2026-11-14**; 3.2B not yet reached |
 | Chapter 6/6.2 – Output Exploration | `hive_metastore` reference | Not yet reached |
 
 ## Changelog
@@ -82,3 +82,12 @@
   idempotent form is `CREATE SCHEMA IF NOT EXISTS` — fixed cell 20 of
   `3.1 - Databases and Tables` to use it (re-runnability still holds
   because the notebook's tables use `CREATE OR REPLACE TABLE`).
+* 2026-11-14: Modernized `3.2A - Views` and validated all 8 working cells
+  end-to-end: `USE CATALOG main`; `CREATE OR REPLACE TABLE cars` (the
+  book's `CREATE TABLE IF NOT EXISTS` + INSERT duplicated 10 rows on every
+  re-run); `CREATE OR REPLACE VIEW`. Global temp views do NOT work on
+  serverless (NOT_SUPPORTED_WITH_SERVERLESS, validated) — cells 13/14/16
+  converted to comment-only; plain TEMP VIEWs work fine. New gotcha:
+  `CREATE TABLE IF NOT EXISTS` + `INSERT INTO` is NOT idempotent — the
+  INSERT runs even when the CREATE is skipped, appending duplicates.
+  Use `CREATE OR REPLACE TABLE` for seed-data cells.

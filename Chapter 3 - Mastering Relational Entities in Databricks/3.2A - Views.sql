@@ -4,9 +4,16 @@
 
 -- COMMAND ----------
 
-USE CATALOG hive_metastore;
+-- DBTITLE 1,Use catalog main, create cars table
+-- The book uses the legacy hive_metastore catalog, which doesn't exist in
+-- Unity Catalog-only workspaces (e.g. Databricks Free Edition).
+-- See MODERNIZATION_NOTES.md in the repo root.
+USE CATALOG main;
 
-CREATE TABLE IF NOT EXISTS cars
+-- The book's CREATE TABLE IF NOT EXISTS + INSERT would append duplicate
+-- rows on every re-run (IF NOT EXISTS skips the CREATE but the INSERT
+-- still runs). CREATE OR REPLACE resets the table instead.
+CREATE OR REPLACE TABLE cars
 (id INT, model STRING, brand STRING, year INT);
 
 INSERT INTO cars
@@ -37,7 +44,10 @@ SHOW TABLES
 
 -- COMMAND ----------
 
-CREATE VIEW view_tesla_cars
+-- DBTITLE 1,Create view_tesla_cars
+-- CREATE OR REPLACE keeps the notebook re-runnable from the top
+-- (a plain CREATE VIEW fails with VIEW_ALREADY_EXISTS on re-run).
+CREATE OR REPLACE VIEW view_tesla_cars
 AS SELECT *
    FROM cars
    WHERE brand = 'Tesla';
@@ -57,7 +67,8 @@ SELECT * FROM view_tesla_cars;
 
 -- COMMAND ----------
 
-CREATE TEMP VIEW temp_view_cars_brands
+-- DBTITLE 1,Create temp view car brands
+CREATE OR REPLACE TEMP VIEW temp_view_cars_brands
 AS  SELECT DISTINCT brand
    FROM cars;
 
@@ -74,19 +85,35 @@ SHOW TABLES;
 
 -- COMMAND ----------
 
-CREATE GLOBAL TEMP VIEW global_temp_view_recent_cars
-AS SELECT * FROM cars
-   WHERE year >= 2022
-   ORDER BY year DESC;
+-- DBTITLE 1,Global temp view (skipped)
+-- (Book cell: CREATE GLOBAL TEMP VIEW global_temp_view_recent_cars
+--   AS SELECT * FROM cars WHERE year >= 2022 ORDER BY year DESC;)
+-- Global temp views are NOT supported on serverless compute in a UC
+-- workspace (NOT_SUPPORTED_WITH_SERVERLESS, validated 2026-11-14) --
+-- a session-wide temp view has no place to live when the session catalog
+-- is Unity Catalog. Plain TEMP VIEWs (previous section) still work; they
+-- are just scoped to the current session instead of shared across
+-- sessions. See MODERNIZATION_NOTES.md in the repo root.
 
 -- COMMAND ----------
 
-SELECT * FROM global_temp.global_temp_view_recent_cars;
+-- DBTITLE 1,Query global temp view (skipped)
+-- (Book cell: SELECT * FROM global_temp.global_temp_view_recent_cars;)
+-- Queried the global temp view through the special global_temp
+-- namespace. Skipped because the view was never created.
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Show tables (temp views not listed)
+-- The book's point: the global temp view doesn't appear here --
+-- SHOW TABLES lists only persistent tables and views in the current
+-- schema, never temp views of either kind.
 SHOW TABLES;
 
 -- COMMAND ----------
 
-SHOW TABLES IN global_temp;
+-- DBTITLE 1,List global temp views (skipped)
+-- (Book cell: SHOW TABLES IN global_temp;)
+-- Listed the session's global temp views. The global_temp namespace
+-- doesn't exist in a UC workspace, and global temp views are unsupported
+-- on serverless anyway.
