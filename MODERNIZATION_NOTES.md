@@ -61,7 +61,7 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16; 4.2–4.3 Fixed 2026-11-17** (see changelog); 4.4–6.4 to be converted with literal volume paths as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16; 4.2–4.4 Fixed 2026-11-17** (see changelog); 4.5–6.4 to be converted with literal volume paths as reached |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -232,3 +232,9 @@
   during validation (identical to what 4.3 will re-create). No other
   UC/serverless issues in this notebook (no hive_metastore, %fs, or widget
   machinery).
+* 2026-11-17: Checked `4.4 - Higher Order Functions` — **no edits needed**.
+  It has no `${dataset.school}` cells (its 4 SQL cells only read the
+  `enrollments` table created by 4.2) and no legacy patterns. All four
+  query shapes validated headless against the live table: FILTER,
+  FILTER + size() predicate, TRANSFORM with a scalar lambda, and TRANSFORM
+  with named struct fields. Runs as-is once 4.2's enrollments table exists.
