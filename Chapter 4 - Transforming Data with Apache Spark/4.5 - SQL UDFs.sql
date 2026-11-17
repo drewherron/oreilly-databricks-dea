@@ -77,5 +77,8 @@ FROM students
 
 -- COMMAND ----------
 
-DROP FUNCTION gpa_to_percentage;
-DROP FUNCTION get_letter_grade;
+-- DBTITLE 1,Drop UDFs (idempotent)
+-- (Book cell: plain DROP FUNCTION — fails on re-run if a function is
+-- already gone. IF EXISTS makes the notebook re-runnable from the top.)
+DROP FUNCTION IF EXISTS gpa_to_percentage;
+DROP FUNCTION IF EXISTS get_letter_grade;
