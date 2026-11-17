@@ -61,7 +61,7 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16** (see changelog); 4.2–6.4 to be converted with literal volume paths as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16; 4.2 Fixed 2026-11-17** (see changelog); 4.3–6.4 to be converted with literal volume paths as reached |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -202,3 +202,18 @@
   rows. The `dataset_school` widget was removed from School-Setup (no
   remaining consumer); a stale `dataset_school` widget may linger in
   already-open notebooks and can be cleared from the widget panel.
+* 2026-11-17: Modernized `4.2 - Writing to Tables` (8 of 22 cells): all
+  `${dataset.school}` SQL converted to literal volume paths (cells 4, 8,
+  11, 13, 15, 18, 20); cell 4's plain CREATE TABLE made `CREATE OR REPLACE`
+  for re-runnability; cell 13 (the commented input_file_name() demo)
+  annotated with the UC replacement `_metadata.file_path`; fixed the book's
+  `c. student_id` / `u. student_id` typo in the students MERGE (Spark SQL
+  rejects the space after the dot).
+  Source queries validated headless with the literal paths: parquet
+  enrollments 2150 rows, enrollments-new 700, json students-json-new 301
+  (schema matches the `students` table: email/gpa/profile/student_id/
+  updated), courses-csv-new temp view 5 rows. MERGE targets `students`
+  (1700 rows) and `courses` (12 rows) — both are created by 4.1, so run
+  4.1 (hybrid section) before 4.2. Managed-table writes (CREATE/INSERT/
+  MERGE) left for the user to run; unqualified table names resolve via
+  School-Setup's `USE de_associate_school`.
