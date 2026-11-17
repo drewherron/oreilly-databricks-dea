@@ -24,15 +24,44 @@
   warehouse path. In UC workspaces, managed-table storage is UC-controlled and
   not browsable that way — use `DESCRIBE DETAIL <table>` (see the `location`
   column) to show where the data lives instead.
-* Where the book says "Delta Live Tables"/"DLT", the current product name is
-  **Lakeflow Spark Declarative Pipelines** (still created with `@dlt.table`-style
-  code, but renamed on the platform).
+* `input_file_name()` is blocked in UC workspaces
+  (UC_COMMAND_NOT_SUPPORTED). The UC replacement is the `_metadata`
+  column group: use `_metadata.file_path AS source_file`.
+* UC external tables require a cloud-storage LOCATION (s3://, abfss://,
+  gs://) inside a registered external location. Volume paths are rejected
+  ("Missing cloud file system scheme" — also via OPTIONS (path)); the
+  dbfs:/ prefix is rejected as UC_FILE_SCHEME_FOR_TABLE_CREATION_NOT_
+  SUPPORTED. Free Edition has no external locations, so the runnable
+  equivalent is a TEMP VIEW with OPTIONS (path = "<volume dir>").
+* REFRESH TABLE is not supported on serverless compute
+  (NOT_SUPPORTED_WITH_SERVERLESS). A temp view's file listing is cached
+  per session; to pick up new files, re-CREATE the view (validated:
+  listing refreshes on re-creation, not on re-query).
+* School-dataset infrastructure (created by `Includes/School-Setup`):
+  schemas `main.de_associate_school` (the book's `DE_Associate_School`) and
+  `main.school_dlt_db`; dataset/checkpoints/dlt paths under the volume
+  `main.de_associate_school.dea_book` (`/Volumes/main/de_associate_school/dea_book/...`).
+* The book's `${dataset.school}` substitution in SQL cells (spark.conf-based)
+  is dead on serverless. The ONLY reliable replacement for direct file-path
+  queries (json./csv./text./binaryFile. format notation) in SQL cells is a
+  literal volume path, e.g.
+  `SELECT * FROM json.`/Volumes/main/de_associate_school/dea_book/datasets/school/students-json``.
+  Widget `:param` markers bind server-side in native SQL cells, and a
+  runtime-bound path breaks direct-file plan creation
+  (FAILED_TO_CREATE_PLAN_FOR_DIRECT_QUERY — confirmed in the user's own
+  UI run). The marker form `IDENTIFIER('json.`' || :param || ...)` works
+  only via the %sql magic path (IPython textual substitution), which is
+  NOT how native SQL cells execute — validating there is a false
+  positive. `IDENTIFIER(:param)` stays valid for object names
+  (tables/views/schemas), just not for file-path notation. Python cells
+  keep using the `dataset_school` variable directly.
 
 ## Known issues
 
 | Location | Issue | Status |
 | --- | --- | --- |
-| Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | Not yet reworked |
+| Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16** (see changelog); 4.2–6.4 to be converted with literal volume paths as reached |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -97,3 +126,79 @@
   three `global_temp` cells (SHOW/SELECT/DROP) converted to comment-only
   "(Book cell: ...)" notes; `DROP VIEW`/`DROP TABLE` made idempotent with
   `IF EXISTS`. Destructive DROP cells left for the user to run.
+* 2026-11-16: Reworked `Includes/School-Setup` for UC (6 of 11 cells) and
+  validated end-to-end:
+  * `USE CATALOG main`; schemas `main.de_associate_school` +
+    `main.school_dlt_db`; all storage under volume
+    `main.de_associate_school.dea_book` (dataset, checkpoints, dlt).
+  * Dataset sourcing: `dbfs:/mnt` mounts + `s3://` are impossible in a
+    UC-only workspace, but the author's bucket `dalhussein-books` is
+    public — School-Setup now lists it via the S3 HTTPS API and downloads
+    with `requests` into the volume. Idempotent (skips existing files).
+    Verified: 51 files / 4,599,831 bytes on disk exactly match the S3
+    listing (12 dataset dirs incl. parquet — binary writes required).
+  * Serverless gotchas (validated): `spark.conf.set` AND SQL `SET` are
+    both blocked for arbitrary keys (CONFIG_NOT_AVAILABLE — not just
+    Delta confs), and `${param}` is no longer substituted in SQL cells.
+    Working replacement: widget + parameter marker in IDENTIFIER():
+    `SELECT COUNT(1) FROM IDENTIFIER('json.`' || :dataset_school ||
+    '/students-json`')` → 1700 rows, tested in a real SQL cell after
+    `%run ../Includes/School-Setup` from 4.1. Widget names for `:param`
+    markers must be identifier-valid (no dots).
+  * FUSE file API (`open`/`os.path`/`os.walk`) and `dbutils.fs` both work
+    on `/Volumes/...` paths on serverless — binary writes OK.
+  * `clean_up()` now drops both schemas CASCADE (the volume inside
+    `de_associate_school` goes with it). Auto Mode blocked a full notebook
+    run over the DROP definition; validated by skipping that definition
+    cell (it only defines a function; the `clean` widget defaults to 0).
+  * 4.1 not modified today (its `${dataset.school}` SQL cells get the
+    IDENTIFIER pattern next session); a temp validation cell was added
+    to 4.1, run, and deleted.
+* 2026-11-16: Modernized `4.1 - Querying Files` (12 of 36 cells, after the
+  user hit the first failure at cell 6): all `${dataset.school}` SQL
+  cells converted to the IDENTIFIER/:dataset_school pattern (cells 6–10,
+  12, 14, 16); CTAS cells made `CREATE OR REPLACE` (18, 19, 34's table);
+  the external-table `LOCATION` and `OPTIONS` path values written as
+  literal volume paths (21, 34) since they are plain string values.
+  All query forms validated in the user's live notebook session:
+  json single file 300 rows, wildcard/directory 1700, text 1700,
+  binaryFile 6 files, csv 16 rows.
+  * NEW GOTCHA (validated): `:widget` parameter markers bind only in the
+    notebook's own execution context. The assistant's headless cell-run
+    tool executes SQL cells in a separate context (even a different
+    Python version) where the marker is not bound, and direct file
+    queries then fail with FAILED_TO_CREATE_PLAN_FOR_DIRECT_QUERY — an
+    artifact of the tool, not a broken cell. An identical statement run
+    in the notebook's live session succeeds.
+* 2026-11-16 (4.1 continued, external-table section): the book's external
+  CSV table (cells 21-32) cannot exist in UC Free Edition — external
+  tables need cloud-storage LOCATIONs under registered external
+  locations; volume paths are rejected by the UC credential machinery
+  (validated: "Missing cloud file system scheme" for both LOCATION and
+  OPTIONS (path); dbfs:/ rejected as UC_FILE_SCHEME_FOR_TABLE_CREATION_
+  NOT_SUPPORTED; UC external tables also don't support CREATE OR REPLACE).
+  Reworked to preserve the lesson: cell 21 creates a TEMP VIEW courses_csv
+  over the same volume files. The Limitation demo still works because a
+  temp view's file listing is cached per session (validated in a scratch
+  dir copy: count unchanged after adding a file); REFRESH TABLE (blocked
+  on serverless) is replaced by re-creating the view (validated: 3 -> 6).
+  DESCRIBE EXTENDED on a temp view lists only columns (no table metadata).
+  Hybrid section (34-36) kept — wildcard OPTIONS path validated (12 rows,
+  deliberately excluding copy_001.csv). Cells 21/22/24/27 validated in the
+  notebook: SELECT shows all 12 courses C01-C12, count 12; expected flow
+  for the Limitation demo: 12 -> copy file -> still 12 -> re-create view
+  -> 15 -> hybrid CTAS courses = 12.
+* 2026-11-16 (correction to the 4.1 entry above): the
+  IDENTIFIER/:dataset_school marker pattern does NOT work in native SQL
+  cells — the user's own UI run failed with
+  FAILED_TO_CREATE_PLAN_FOR_DIRECT_QUERY. Root cause: native SQL cells
+  bind `:param` markers server-side; a runtime-bound path cannot be
+  planned for direct queries on files. The earlier "validation" ran
+  through the %sql magic path (textual widget substitution), a false
+  positive. Re-converted 4.1's file-path cells (6–10, 12, 14, 16, 18,
+  19) to literal volume paths (static queries — no binding machinery,
+  identical behavior on every execution path). Validated: json single
+  file 300 rows / directory 1700, text 1700, binaryFile 6 files, csv 16
+  rows. The `dataset_school` widget was removed from School-Setup (no
+  remaining consumer); a stale `dataset_school` widget may linger in
+  already-open notebooks and can be cleared from the widget panel.
