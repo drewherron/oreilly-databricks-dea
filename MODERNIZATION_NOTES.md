@@ -36,7 +36,7 @@
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
-| Chapter 3: 3.1, 3.2A, 3.2B | `hive_metastore` references — may be pedagogical (teaching legacy vs UC); fix in context when reached | 3.1 & 3.2A **Fixed 2026-11-14**; 3.2B not yet reached |
+| Chapter 3: 3.1, 3.2A, 3.2B | `hive_metastore` references — may be pedagogical (teaching legacy vs UC); fix in context when reached | 3.1 & 3.2A **Fixed 2026-11-14**; 3.2B **Fixed 2026-11-16** — Chapter 3 complete |
 | Chapter 6/6.2 – Output Exploration | `hive_metastore` reference | Not yet reached |
 
 ## Changelog
@@ -91,3 +91,9 @@
   `CREATE TABLE IF NOT EXISTS` + `INSERT INTO` is NOT idempotent — the
   INSERT runs even when the CREATE is skipped, appending duplicates.
   Use `CREATE OR REPLACE TABLE` for seed-data cells.
+* 2026-11-16: Modernized `3.2B - Views (Session 2)` (5 of 9 cells):
+  `USE CATALOG main` (cell 2, validated by running it — confirms the
+  session-2 point: stored views persist, session temp views don't); the
+  three `global_temp` cells (SHOW/SELECT/DROP) converted to comment-only
+  "(Book cell: ...)" notes; `DROP VIEW`/`DROP TABLE` made idempotent with
+  `IF EXISTS`. Destructive DROP cells left for the user to run.
