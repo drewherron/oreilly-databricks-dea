@@ -136,6 +136,3 @@ USING courses_updates u
 ON c.course_id = u.course_id AND c.title = u.title
 WHEN NOT MATCHED AND u.category = 'Computer Science' THEN
  INSERT *
-
--- COMMAND ----------
-

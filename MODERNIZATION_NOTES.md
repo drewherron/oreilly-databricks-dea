@@ -61,7 +61,7 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16; 4.2 Fixed 2026-11-17** (see changelog); 4.3–6.4 to be converted with literal volume paths as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16; 4.2–4.3 Fixed 2026-11-17** (see changelog); 4.4–6.4 to be converted with literal volume paths as reached |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -217,3 +217,18 @@
   4.1 (hybrid section) before 4.2. Managed-table writes (CREATE/INSERT/
   MERGE) left for the user to run; unqualified table names resolve via
   School-Setup's `USE de_associate_school`.
+* 2026-11-17: Modernized `4.3 - Advanced Transformations` (1 of 33 cells —
+  the only `${dataset.school}` in the notebook): cell 25's enrollments_updates
+  temp view converted to a literal volume path. Everything else reads the
+  `students`/`courses`/`enrollments` tables created by 4.1/4.2, so run those
+  first (incl. 4.2's INSERT INTO append — the set-operation section contrasts
+  enrollments 2850 vs enrollments-new 700: UNION ALL 3550, INTERSECT 700,
+  MINUS 2150).
+  Validated headless: cell 25's view (700 rows); the other query shapes —
+  explode(courses), collect_set(courses.course_id) + array_distinct(flatten),
+  from_json + schema_of_json, the enrollments⋈courses join behind cell 23,
+  and the cell-33 PIVOT — all run clean against the current tables.
+  Note: cell 23's `CREATE OR REPLACE VIEW enrollments_enriched` was created
+  during validation (identical to what 4.3 will re-create). No other
+  UC/serverless issues in this notebook (no hive_metastore, %fs, or widget
+  machinery).

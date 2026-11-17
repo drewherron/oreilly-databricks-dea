@@ -142,8 +142,10 @@ SELECT * FROM enrollments_enriched
 
 -- COMMAND ----------
 
+-- DBTITLE 1,Temp view over enrollments-new
+-- (Book cell used ${dataset.school}; literal volume path instead.)
 CREATE OR REPLACE TEMP VIEW enrollments_updates
-AS SELECT * FROM parquet.`${dataset.school}/enrollments-new`;
+AS SELECT * FROM parquet.`/Volumes/main/de_associate_school/dea_book/datasets/school/enrollments-new`;
 
 -- COMMAND ----------
 
@@ -194,4 +196,3 @@ PIVOT (
    'C01', 'C02', 'C03', 'C04', 'C05', 'C06',
    'C07', 'C08', 'C09', 'C10', 'C11', 'C12')
 )
-
