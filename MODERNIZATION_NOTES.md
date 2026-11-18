@@ -61,7 +61,8 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1 Fixed 2026-11-16; 4.2–4.5 Fixed 2026-11-17** — Chapter 4 complete (4.4/4.5 needed no path edits; see changelog); 5.1–6.4 to be converted with literal volume paths as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1 Fixed 2026-11-17** — 5.1 had no `${dataset.school}` cells (its fixes were streaming-related, see the 5.1 row below); 5.2–6.4 to be converted with literal volume paths as reached |
+| 5.1 – Structured Streaming | `dbfs:/mnt/DEA-Book/checkpoints` paths (cells 14/20/25) and continuous `processingTime` trigger (cell 14) — both impossible on UC-only serverless | **Fixed 2026-11-17** — volume checkpoints + availableNow rework (see changelog) |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -256,3 +257,41 @@
     4.1 cell 34 precedent), and `USE SCHEMA catalog.schema` two-part form is
     rejected (UC_INVALID_NAMESPACE) — use `USE CATALOG x` then
     `USE SCHEMA y` (School-Setup already does this).
+* 2026-11-17: Modernized `5.1 - Structured Streaming` (5 of 27 cells; no
+  `${dataset.school}` in this notebook — its issues were streaming-related):
+  * `dbfs:/mnt/DEA-Book/checkpoints/...` (cells 14/20/25) → literal volume
+    paths `/Volumes/main/de_associate_school/dea_book/checkpoints/...`.
+    The `checkpoints/` root is new — School-Setup only created `datasets/`
+    (the dir was created by this session's validation).
+  * NEW GOTCHA (validated): time-based triggers are blocked on serverless
+    — `.trigger(processingTime='3 seconds')` fails with
+    INFINITE_STREAMING_TRIGGER_NOT_SUPPORTED ("Use a different trigger type
+    e.g. AvailableNow, Once"); docs say use Trigger.AvailableNow for
+    triggered runs or Lakeflow pipelines continuous mode for always-on
+    streams. Cell 14 (continuous demo) converted to availableNow +
+    awaitTermination (the book's own one-shot pattern from cell 20);
+    re-running it after the cell-16/19 INSERTs replaces the book's
+    auto-update demo. Cells 17/20 annotated accordingly.
+  * Cells 7/9 (plain SELECT on the streaming temp view) fail with "Queries
+    with streaming sources must be executed with writeStream.start()" — a
+    Spark rule, not a UC/serverless regression (cell 10 is the book's own
+    commented-out ORDER BY limitation demo). Per user request, both cells
+    are commented out with explanatory notes so Run All completes (note:
+    unlike 3.1's intentional cell-11 error, this book kept as-is).
+    Update 2026-11-18: Run All can still stop at cell 24 if serverless
+    rejects display() of a streaming DF — unconfirmed either way; if it
+    fails, comment it out the same way (cell 25 is the validated path).
+  * Validated headless: readStream.table(courses) + temp view (cells
+    4/6); CREATE TEMP VIEW over the streaming view + spark.table →
+    isStreaming (cells 12/13); availableNow + complete + .table() sink +
+    volume checkpoint writes 15 rows; re-run from the same checkpoint
+    completes without duplicating (complete mode rewrites state). The
+    INSERT-driven update flow (cells 16→17, 19→20) is standard
+    Delta-source/checkpoint behavior — expected, left for the user to run
+    (Auto Mode blocked the destructive validation).
+  * Cell 24 (display of a streaming DF) cannot be validated headless (no
+    display() outside the notebook UI); annotated in-cell with the
+    availableNow fallback. Cells 26/27 read the sink table — fine.
+  * Validation leftovers for the user to drop: table
+    `main.de_associate_school._dea_51_scratch` and checkpoint dir
+    `/Volumes/main/de_associate_school/dea_book/checkpoints/_51_scratch_ck`.
