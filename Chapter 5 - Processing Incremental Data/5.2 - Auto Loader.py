@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # Auto Loader in Action
 
@@ -27,15 +31,24 @@ display(files)
 
 # COMMAND ----------
 
+# DBTITLE 1,Setting up Auto Loader (writeStream)
 (spark.readStream
            .format("cloudFiles")
            .option("cloudFiles.format", "json")
            .option("cloudFiles.inferColumnTypes","true")
-           .option("cloudFiles.schemaLocation", "dbfs:/mnt/DEA-Book/checkpoints/enrollments")
+           # Book path dbfs:/mnt/DEA-Book/... → volume path
+           .option("cloudFiles.schemaLocation", "/Volumes/main/de_associate_school/dea_book/checkpoints/enrollments")
            .load(f"{dataset_school}/enrollments-json-raw")
      .writeStream
-           .option("checkpointLocation", "dbfs:/mnt/DEA-Book/checkpoints/enrollments")
+           # Book path dbfs:/mnt/DEA-Book/... → volume path
+           .option("checkpointLocation", "/Volumes/main/de_associate_school/dea_book/checkpoints/enrollments")
+           # The book relies on Spark's default (continuous) trigger, which
+           # is not supported on serverless — every streaming query needs an
+           # explicit Trigger.AvailableNow there. One-shot: re-run this cell
+           # after load_new_data() to ingest files added since the last run.
+           .trigger(availableNow=True)
            .table("enrollments_updates")
+           .awaitTermination()
 )
 
 # COMMAND ----------
@@ -66,6 +79,9 @@ display(files)
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC -- The book's continuous stream updated this count automatically.
+# MAGIC -- With the one-shot availableNow trigger, re-run the Auto Loader cell
+# MAGIC -- above to ingest the file added by load_new_data().
 # MAGIC SELECT count(*) FROM enrollments_updates
 
 # COMMAND ----------
@@ -88,12 +104,12 @@ display(files)
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC DROP TABLE enrollments_updates
+# MAGIC DROP TABLE IF EXISTS enrollments_updates
 
 # COMMAND ----------
 
-dbutils.fs.rm("dbfs:/mnt/DEA-Book/checkpoints/enrollments", True)
+# Book path dbfs:/mnt/DEA-Book/... → volume path (same dir as the schemaLocation)
+dbutils.fs.rm("/Volumes/main/de_associate_school/dea_book/checkpoints/enrollments", True)
 
 # COMMAND ----------
-
 

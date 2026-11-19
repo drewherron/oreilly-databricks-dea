@@ -61,8 +61,9 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1 Fixed 2026-11-17** — 5.1 had no `${dataset.school}` cells (its fixes were streaming-related, see the 5.1 row below); 5.2–6.4 to be converted with literal volume paths as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1–5.2 Fixed** — 5.1/5.2 had no `${dataset.school}` cells (their fixes were streaming-related, see their rows below); 5.3–6.4 to be converted with literal volume paths as reached |
 | 5.1 – Structured Streaming | `dbfs:/mnt/DEA-Book/checkpoints` paths (cells 14/20/25) and continuous `processingTime` trigger (cell 14) — both impossible on UC-only serverless | **Fixed 2026-11-17** — volume checkpoints + availableNow rework (see changelog) |
+| 5.2 – Auto Loader | `dbfs:/mnt/DEA-Book/checkpoints` schema/checkpoint paths + no explicit trigger on the writeStream (cell 6); `dbfs:/mnt` `dbutils.fs.rm` cleanup (cell 17); plain `DROP TABLE` (cell 16) | **Fixed 2026-11-19** — volume paths + availableNow rework (see changelog) |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -295,3 +296,31 @@
   * Validation leftovers for the user to drop: table
     `main.de_associate_school._dea_51_scratch` and checkpoint dir
     `/Volumes/main/de_associate_school/dea_book/checkpoints/_51_scratch_ck`.
+* 2026-11-19: Modernized `5.2 - Auto Loader` (4 of 18 cells; no
+  `${dataset.school}` SQL — Python cells use School-Setup's
+  `dataset_school` variable, which still exists):
+  * Cell 6: `cloudFiles.schemaLocation` + `checkpointLocation` moved from
+    `dbfs:/mnt/DEA-Book/checkpoints/enrollments` to the volume
+    (`/Volumes/main/de_associate_school/dea_book/checkpoints/enrollments`);
+    the book's implicit default trigger replaced with an explicit
+    `availableNow` + `awaitTermination()` (serverless requires an explicit
+    trigger on every streaming query — see the 5.1 gotcha). Re-running the
+    cell after `load_new_data()` replaces the book's auto-ingest demo;
+    cell 12 annotated accordingly.
+  * Cell 16: `DROP TABLE IF EXISTS` for re-runnability. Cell 17:
+    `dbutils.fs.rm` → volume path.
+  * Validated headless (scratch sink `_dea_52_scratch` + checkpoint dir
+    `_52_scratch_ck`): Auto Loader (cloudFiles/json/inferColumnTypes)
+    works on serverless — 1000 rows from the initial 01.json with
+    inferred schema (incl. `_rescued_data`); re-run from the same
+    checkpoint doesn't duplicate (still 1000). The `load_new_data()` →
+    re-run flow is standard Auto Loader behavior — expected, left for
+    the user to run (it copies files into the dataset dir; Auto Mode
+    blocked the destructive validation).
+  * Cells 4/10/11 needed no edits: `dbutils.fs.ls` works on /Volumes, and
+    `load_new_data()` survived the School-Setup rework (copies NN.json
+    from enrollments-json-streaming into enrollments-json-raw, up to 10).
+    Raw dir starts pristine with 01.json only.
+  * Scratch leftovers to drop: table
+    `main.de_associate_school._dea_52_scratch` + checkpoint dir
+    `/Volumes/main/de_associate_school/dea_book/checkpoints/_52_scratch_ck`.
