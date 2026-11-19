@@ -61,9 +61,10 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1–5.2 Fixed** — 5.1/5.2 had no `${dataset.school}` cells (their fixes were streaming-related, see their rows below); 5.3–6.4 to be converted with literal volume paths as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1–5.3 Fixed** — 5.1–5.3 had no `${dataset.school}` cells (their fixes were streaming-related, see their rows below); 6.1–6.4 to be converted with literal volume paths as reached |
 | 5.1 – Structured Streaming | `dbfs:/mnt/DEA-Book/checkpoints` paths (cells 14/20/25) and continuous `processingTime` trigger (cell 14) — both impossible on UC-only serverless | **Fixed 2026-11-17** — volume checkpoints + availableNow rework (see changelog) |
 | 5.2 – Auto Loader | `dbfs:/mnt/DEA-Book/checkpoints` schema/checkpoint paths + no explicit trigger on the writeStream (cell 6); `dbfs:/mnt` `dbutils.fs.rm` cleanup (cell 17); plain `DROP TABLE` (cell 16) | **Fixed 2026-11-19** — volume paths + availableNow rework (see changelog) |
+| 5.3 – Medallion Architecture | `F.input_file_name()` in bronze (cell 7 — blocked in UC even in streaming); no explicit trigger on bronze (7) / silver (17) writes; gold (23) missing `awaitTermination` | **Fixed 2026-11-19** — `_metadata.file_path` + availableNow rework (see changelog) |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -324,3 +325,34 @@
   * Scratch leftovers to drop: table
     `main.de_associate_school._dea_52_scratch` + checkpoint dir
     `/Volumes/main/de_associate_school/dea_book/checkpoints/_52_scratch_ck`.
+* 2026-11-19: Modernized `5.3 - Medallion Architecture` (7 of 28 cells; no
+  `${dataset.school}` and checkpoint paths already used School-Setup's
+  `checkpoint_path` variable — no path edits needed):
+  * NEW GOTCHA (validated): `F.input_file_name()` is blocked in UC even
+    inside a streaming Auto Loader query — UC_COMMAND_NOT_SUPPORTED.
+    WITH_RECOMMENDATION explicitly says "use _metadata.file_path instead".
+    Cell 7's bronze replaced with
+    `F.col("_metadata.file_path").alias("source_file")` — validated in the
+    Auto Loader path (file paths populated correctly).
+  * Bronze (cell 7) + silver (cell 17) writes had no explicit trigger
+    (blocked on serverless) — both got availableNow + awaitTermination.
+    Gold (cell 23) already had availableNow; added awaitTermination so the
+    next cell's SELECT sees finished data.
+  * The book's three chained always-on streams (bronze→silver→gold
+    auto-updating after load_new_data) become one-shot cells: re-run
+    bronze, then silver, then gold, in order. Cells 11/20/26 annotated
+    with the re-run order; cell 28 (stop active streams) annotated — the
+    loop now finds nothing to stop.
+  * Validated headless as a full scratch chain (_dea_53_bronze/_silver/
+    _gold + checkpoints _53_*_ck): bronze 3000 rows (the user has been
+    running 5.2 — raw dir had 01–03.json), silver stream-static join
+    3000, gold complete-mode aggregation 700 rows.
+  * Cells 4/10/19/25 (dbutils.fs.ls / load_new_data) and 13 (batch json
+    lookup) needed no edits.
+  * User-run evidence: 5.1's sink tables (instructor_counts,
+    instructor_counts_py) and 5.2's full run incl. cleanup cells
+    (enrollments_updates dropped, checkpoint removed) have happened.
+  * Scratch leftovers to drop: tables _dea_53_bronze/_dea_53_silver/
+    _dea_53_gold + checkpoint dirs _53_bronze_ck/_53_silver_ck/
+    _53_gold_ck/_53_probe_ck (probe dir — the failed input_file_name
+    probe still created it).

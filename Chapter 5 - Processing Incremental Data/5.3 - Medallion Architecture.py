@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # Building Medallion Architectures
 
@@ -32,6 +36,7 @@ display(files)
 
 # COMMAND ----------
 
+# DBTITLE 1,Bronze layer (Auto Loader writeStream)
 import pyspark.sql.functions as F
 
 (spark.readStream
@@ -42,12 +47,20 @@ import pyspark.sql.functions as F
            .load(f"{dataset_school}/enrollments-json-raw")
            .select("*",
                    F.current_timestamp().alias("arrival_time"),
-                   F.input_file_name().alias("source_file"))
+                   # Book uses F.input_file_name() — blocked in Unity Catalog
+                   # (UC_COMMAND_NOT_SUPPORTED); _metadata.file_path is the UC replacement.
+                   F.col("_metadata.file_path").alias("source_file"))
      .writeStream
            .format("delta")
            .option("checkpointLocation", f"{checkpoint_path}/enrollments_bronze")
            .outputMode("append")
+           # The book relies on Spark's default (continuous) trigger, which is
+           # not supported on serverless — every streaming query needs an
+           # explicit Trigger.AvailableNow. One-shot: after load_new_data(),
+           # re-run this cell to ingest files added since the last run.
+           .trigger(availableNow=True)
            .table("enrollments_bronze")
+           .awaitTermination()
 )
 
 
@@ -68,6 +81,9 @@ load_new_data()
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC -- The book's continuous stream ingested the new file automatically.
+# MAGIC -- With the one-shot availableNow trigger, re-run the bronze cell above
+# MAGIC -- first to see the count grow here.
 # MAGIC SELECT count(1) FROM enrollments_bronze
 
 # COMMAND ----------
@@ -103,11 +119,17 @@ enrollments_enriched_df = (spark.readStream
 
 # COMMAND ----------
 
+# DBTITLE 1,Silver layer (writeStream)
 (enrollments_enriched_df.writeStream
                        .format("delta")
                        .option("checkpointLocation", f"{checkpoint_path}/enrollments_silver")
                        .outputMode("append")
-                       .table("enrollments_silver"))
+                       # Serverless requires an explicit trigger on every
+                       # streaming query. One-shot: re-run this cell after
+                       # re-running the bronze cell to pick up new rows.
+                       .trigger(availableNow=True)
+                       .table("enrollments_silver")
+                       .awaitTermination())
 
 # COMMAND ----------
 
@@ -121,6 +143,8 @@ load_new_data()
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC -- Re-run the bronze and silver cells above (in that order) to see the
+# MAGIC -- newly loaded enrollments flow through to silver.
 # MAGIC SELECT count(1) FROM enrollments_silver
 
 # COMMAND ----------
@@ -140,12 +164,17 @@ enrollments_agg_df = (spark.readStream
 
 # COMMAND ----------
 
+# DBTITLE 1,Gold layer (writeStream)
 (enrollments_agg_df.writeStream
                    .format("delta")
                    .outputMode("complete")
                    .option("checkpointLocation", f"{checkpoint_path}/daily_student_courses")
                    .trigger(availableNow=True)
-                   .table("daily_student_courses"))
+                   .table("daily_student_courses")
+                   # awaitTermination() added: with a one-shot trigger it
+                   # returns as soon as the batch completes, so the table is
+                   # ready for the next cell's SELECT.
+                   .awaitTermination())
 
 # COMMAND ----------
 
@@ -159,6 +188,8 @@ load_new_data()
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC -- Re-run the bronze, silver, and gold cells above (in that order) to
+# MAGIC -- refresh the aggregates with the newly loaded enrollments.
 # MAGIC SELECT * FROM daily_student_courses
 
 # COMMAND ----------
@@ -169,6 +200,11 @@ load_new_data()
 
 # COMMAND ----------
 
+# With the one-shot availableNow triggers used above, the streams
+# terminate themselves after each run — this loop from the book simply
+# finds nothing to stop. (Always-on streams would need Lakeflow pipelines
+# continuous mode or classic compute; time-based triggers are blocked on
+# serverless.)
 for s in spark.streams.active:
    print("Stopping stream: " + s.id)
    s.stop()
