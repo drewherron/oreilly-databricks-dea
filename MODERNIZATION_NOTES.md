@@ -61,10 +61,11 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1–5.3 Fixed** — 5.1–5.3 had no `${dataset.school}` cells (their fixes were streaming-related, see their rows below); 6.1–6.4 to be converted with literal volume paths as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1–5.3 Fixed** — 5.1–5.3 had no `${dataset.school}` cells (their fixes were streaming-related, see their rows below); 6.1 Fixed (2026-11-23, incl. DLT→SDP syntax modernization); 6.2–6.4 to be converted as reached |
 | 5.1 – Structured Streaming | `dbfs:/mnt/DEA-Book/checkpoints` paths (cells 14/20/25) and continuous `processingTime` trigger (cell 14) — both impossible on UC-only serverless | **Fixed 2026-11-17** — volume checkpoints + availableNow rework (see changelog) |
 | 5.2 – Auto Loader | `dbfs:/mnt/DEA-Book/checkpoints` schema/checkpoint paths + no explicit trigger on the writeStream (cell 6); `dbfs:/mnt` `dbutils.fs.rm` cleanup (cell 17); plain `DROP TABLE` (cell 16) | **Fixed 2026-11-19** — volume paths + availableNow rework (see changelog) |
 | 5.3 – Medallion Architecture | `F.input_file_name()` in bronze (cell 7 — blocked in UC even in streaming); no explicit trigger on bronze (7) / silver (17) writes; gold (23) missing `awaitTermination` | **Fixed 2026-11-19** — `_metadata.file_path` + availableNow rework (see changelog) |
+| 6.1 – Delta Live Tables | DLT-era syntax throughout: `SET school.dataset_path` conf + `${...}` paths (dbfs:/mnt), legacy `cloud_files()`, `LIVE.` prefixes, `CREATE OR REPLACE MATERIALIZED VIEW`; cells are pipeline source, not runnable notebook cells | **Fixed 2026-11-23** — SDP rework (see changelog) |
 | Chapter 2/2.1 – Delta Lake, cell 2 | `USE CATALOG hive_metastore` fails | **Fixed 2026-11-13** → `USE CATALOG main` |
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
@@ -356,3 +357,29 @@
     _dea_53_gold + checkpoint dirs _53_bronze_ck/_53_silver_ck/
     _53_gold_ck/_53_probe_ck (probe dir — the failed input_file_name
     probe still created it).
+* 2026-11-23: Modernized `6.1 - Delta Live Tables` (6 of 15 cells + one new
+  setup markdown cell). NOTE: this notebook is pipeline source code — its SQL
+  only executes inside a Lakeflow (SDP) pipeline, not as notebook cells:
+  * Cell 3 (`SET school.dataset_path=dbfs:/mnt/...`) → comment-only book-cell
+    note (SET blocked for arbitrary keys, ${...} substitution gone, no mounts).
+  * Cell 6: legacy `cloud_files("${school.dataset_path}/enrollments-dlt-raw",
+    "json", map(...))` → `STREAM read_files("/Volumes/.../enrollments-dlt-raw",
+    format => "json", `cloudFiles.inferColumnTypes` => "true")` — current
+    pipeline SQL; option keys containing dots must be backticked.
+  * Cell 8: `CREATE OR REPLACE MATERIALIZED VIEW` → `CREATE OR REFRESH
+    MATERIALIZED VIEW` (the SDP SQL form); path → literal volume path. The
+    pipeline's `students` lands in main.school_dlt_db — no clash with
+    chapter 4's main.de_associate_school.students.
+  * Cells 10/12/15: legacy `LIVE.` prefix removed (`STREAM(LIVE.x)` →
+    `STREAM(x)`, `LIVE.x` → `x`). Docs: in new pipelines the LIVE prefix is
+    silently ignored, so dropping it is safe and current. Cell 15 keeps the
+    book's commented `-- FROM enrollments_cleaned` teaching line.
+  * New "Pipeline setup (this fork)" markdown cell: create a serverless
+    pipeline, destination catalog main + schema school_dlt_db (both from
+    School-Setup), this notebook as source. Free Edition supports pipelines
+    (limit: one active pipeline per pipeline type).
+  * Validated headless: `read_files` batch read of enrollments-dlt-raw works
+    on serverless (1000 rows, expected schema incl. `_rescued_data`);
+    students-json 1700 rows; the silver join and gold UK aggregation logic
+    run clean (123 UK rows). The CREATE OR REFRESH statements themselves
+    execute only inside the pipeline — user runs the pipeline update.
