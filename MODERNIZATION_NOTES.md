@@ -61,7 +61,7 @@
 | Location | Issue | Status |
 | --- | --- | --- |
 | Includes/School-Setup | `hive_metastore` + DBFS mounts + `s3://` source for the school dataset; chapters 5–6 depend on its output | **Fixed 2026-11-16** — UC rework (see changelog); dataset now in volume `main.de_associate_school.dea_book`, pulled from the author's public bucket over HTTPS |
-| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1–5.3 Fixed** — 5.1–5.3 had no `${dataset.school}` cells (their fixes were streaming-related, see their rows below); 6.1 Fixed (2026-11-23, incl. DLT→SDP syntax modernization); 6.2–6.4 to be converted as reached |
+| Chapters 4–6 notebooks | SQL cells use `${dataset.school}` substitution, which no longer works on serverless | **4.1–4.5 Fixed (Chapter 4 complete); 5.1–5.3 Fixed** — 5.1–5.3 had no `${dataset.school}` cells (their fixes were streaming-related, see their rows below); 6.1–6.2 Fixed (2026-11-23, incl. DLT→SDP syntax modernization); 6.3–6.4 to be converted as reached |
 | 5.1 – Structured Streaming | `dbfs:/mnt/DEA-Book/checkpoints` paths (cells 14/20/25) and continuous `processingTime` trigger (cell 14) — both impossible on UC-only serverless | **Fixed 2026-11-17** — volume checkpoints + availableNow rework (see changelog) |
 | 5.2 – Auto Loader | `dbfs:/mnt/DEA-Book/checkpoints` schema/checkpoint paths + no explicit trigger on the writeStream (cell 6); `dbfs:/mnt` `dbutils.fs.rm` cleanup (cell 17); plain `DROP TABLE` (cell 16) | **Fixed 2026-11-19** — volume paths + availableNow rework (see changelog) |
 | 5.3 – Medallion Architecture | `F.input_file_name()` in bronze (cell 7 — blocked in UC even in streaming); no explicit trigger on bronze (7) / silver (17) writes; gold (23) missing `awaitTermination` | **Fixed 2026-11-19** — `_metadata.file_path` + availableNow rework (see changelog) |
@@ -70,7 +70,7 @@
 | Chapter 2/2.1 – Delta Lake | 8 cells doing `%fs ls`/`%fs head` on `dbfs:/user/hive/warehouse/product_info` | **Fixed 2026-11-13 (Option A)** – explanatory comments + `DESCRIBE DETAIL` + `information_schema` check |
 | Chapter 2/2.1 – Delta Lake, cell 4 | Plain `CREATE TABLE` fails on re-run (`TABLE_OR_VIEW_ALREADY_EXISTS`) when a previous session left the table behind | **Fixed 2026-11-14** → `CREATE OR REPLACE TABLE` (drops + recreates, notebook re-runnable from the top) |
 | Chapter 3: 3.1, 3.2A, 3.2B | `hive_metastore` references — may be pedagogical (teaching legacy vs UC); fix in context when reached | 3.1 & 3.2A **Fixed 2026-11-14**; 3.2B **Fixed 2026-11-16** — Chapter 3 complete |
-| Chapter 6/6.2 – Output Exploration | `hive_metastore` reference | Not yet reached |
+| Chapter 6/6.2 – Output Exploration | `hive_metastore` reference; `%fs ls`/`delta.` queries on `dbfs:/mnt/DEA-Book/dlt` (pipeline storage + event log) | **Fixed 2026-11-23** — UC equivalents (see changelog) |
 
 ## Changelog
 
@@ -383,3 +383,25 @@
     students-json 1700 rows; the silver join and gold UK aggregation logic
     run clean (123 UK rows). The CREATE OR REFRESH statements themselves
     execute only inside the pipeline — user runs the pipeline update.
+* 2026-11-23: Modernized `6.2 - Output Exploration` (5 of 6 cells + one new
+  setup markdown cell; depends on the 6.1 pipeline having run):
+  * Cells 2/3 (`%fs ls dbfs:/mnt/DEA-Book/dlt` + `.../system/events`) →
+    comment-only book-cell notes (a UC pipeline has no browsable storage
+    root; converted to SQL-comment cells so they no-op cleanly).
+  * Cell 4 (`SELECT * FROM delta.`dbfs:/mnt/.../system/events``) →
+    `SELECT * FROM event_log("<your-pipeline-id>")` — for new pipelines the
+    event log is a hidden Delta table (event_log_<pipeline_id>) in the
+    pipeline's target schema, readable only via the event_log() TVF by the
+    pipeline owner. Commented alternative included:
+    system.lakeflow_pipeline_events_preview.pipeline_events (Beta, verified
+    accessible in this workspace — 4125 account rows, filter by pipeline_id).
+  * Cell 5 (`%fs ls .../schemas/school_dlt_db/tables`) → `SHOW TABLES IN
+    main.school_dlt_db` (validated headless: schema exists, currently empty
+    until the pipeline runs).
+  * Cell 6 (`hive_metastore.school_dlt_db...`) → `main.school_dlt_db....`.
+  * GOTCHA (edit tooling): nuids from a readAssetById of this notebook were
+    mispaired with content (shifted by one) — first edit failed with
+    old_text-not-found; re-read gave correct pairings (matches the known
+    gotcha from 2026-11-14). Always re-read after an edit failure.
+  * Cells 4/6 require the user to paste their pipeline ID / run the 6.1
+    pipeline first — user-run steps.
